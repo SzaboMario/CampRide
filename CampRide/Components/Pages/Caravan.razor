@@ -1,0 +1,81 @@
+﻿@page "/caravans"
+@using CampRide.Data.Entities
+@using CampRide.Services
+@inject CaravanService CaravanService
+@inject NavigationManager Navigation
+
+<h1>Lakóautók</h1>
+
+@if(caravans == null)
+{
+    <p>Adatok betöltése...</p>
+} else if(!caravans.Any())
+{
+    <p>Nincs elérhető lakóautó.</p>
+} else
+{
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Kép</th>
+                <th>Név</th>
+                <th>Leírás</th>
+                <th>Férőhely</th>
+                <th>Művelet</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach(var caravan in caravans)
+            {
+                var primaryImage = caravan.Images
+                .Where(i => !i.IsDeleted)
+                .OrderByDescending(i => i.IsPrimary)
+                .ThenBy(i => i.SortOrder)
+                .FirstOrDefault();
+
+                <tr>
+                    <td>
+                        @if(primaryImage != null)
+                        {
+                            <img src="@GetImagePath(primaryImage)"
+                                 style="width:120px; border-radius:6px;" />
+                        } else
+                        {
+                            <span>Nincs kép</span>
+                        }
+                    </td>
+
+                    <td>@caravan.Name</td>
+                    <td>@caravan.Description</td>
+                    <td>@caravan.Capacity fő</td>
+
+                    <td>
+                        <NavLink href="@($"/caravans/{caravan.Id}")"
+                                 class="btn btn-sm btn-outline-primary">
+                            Képek
+                        </NavLink>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private List<CaravanEntity>? caravans;
+
+    protected override async Task OnInitializedAsync()
+    {
+        caravans = await CaravanService.GetAllAsync();
+    }
+
+    private string GetImagePath(CaravanImageEntity image)
+    {
+        return $"/images/caravans/{image.CaravanId}/{image.FileName}";
+    }
+
+    private void OpenGallery(int caravanId)
+    {
+        Navigation.NavigateTo($"/caravans/{caravanId}");
+    }
+}
