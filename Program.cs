@@ -4,6 +4,7 @@ using CampRide.Data.Entities;
 using CampRide.Seeder;
 using CampRide.Services;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using QuestPDF.Infrastructure;
@@ -92,6 +93,12 @@ using (var scope = app.Services.CreateScope())
             await userManager.AddToRoleAsync(admin, "Admin");
     }
 }
+
+// Fly.io proxy mögött fut: X-Forwarded-Proto: https fejléc megbízható
+app.UseForwardedHeaders(new ForwardedHeadersOptions
+{
+    ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
+});
 
 if (!app.Environment.IsDevelopment())
 {
