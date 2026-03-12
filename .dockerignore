@@ -1,0 +1,10 @@
+bin/
+obj/
+.vs/
+.git/
+.gitignore
+*.md
+campride.db
+campride.db-shm
+campride.db-wal
+appsettings.Development.json

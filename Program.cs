@@ -20,7 +20,9 @@ builder.Services.AddRazorPages();
 
 builder.Services.AddDbContext<AppDbContext>(options =>
 {
-    options.UseSqlite("Data Source=campride.db");
+    var connStr = builder.Configuration.GetConnectionString("DefaultConnection")
+                  ?? "Data Source=campride.db";
+    options.UseSqlite(connStr);
 });
 
 builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
