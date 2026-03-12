@@ -2,8 +2,8 @@
 @rendermode InteractiveServer
 @using CampRide.Data.Entities
 @using CampRide.Services
-@inject BookingService BookingService
-@inject IJSRuntime JS
+@inject BookingService BookingSvc
+@inject IJSRuntime JsInterop
 @attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Admin")]
 
 <h2 class="mb-4">Foglalások kezelése</h2>
@@ -126,19 +126,19 @@ else
 
     private async Task LoadAsync()
     {
-        bookings = await BookingService.GetAllBookingsAsync();
+        bookings = await BookingSvc.GetAllBookingsAsync();
     }
 
     private async Task Approve(int id)
     {
-        await BookingService.ApproveAsync(id);
+        await BookingSvc.ApproveAsync(id);
         await LoadAsync();
         ShowMessage("Foglalás jóváhagyva.", true);
     }
 
     private async Task Cancel(int id)
     {
-        await BookingService.CancelAsync(id);
+        await BookingSvc.CancelAsync(id);
         await LoadAsync();
         ShowMessage("Foglalás lemondva.", true);
     }
@@ -161,7 +161,7 @@ else
                 var days = (b.ToDate - b.FromDate).Days + 1;
                 sb.AppendLine($"{b.Id};{Escape(b.Caravan?.Name)};{Escape(b.CustomerName)};{Escape(b.Email)};{Escape(b.Phone)};{b.FromDate:yyyy.MM.dd};{b.ToDate:yyyy.MM.dd};{days};{GetStatusLabel(b.Status)};{Escape(b.Notes)}");
             }
-            await JS.InvokeVoidAsync("downloadCsv", $"foglalasok_{DateTime.Now:yyyyMMdd}.csv", sb.ToString());
+            await JsInterop.InvokeVoidAsync("downloadCsv", $"foglalasok_{DateTime.Now:yyyyMMdd}.csv", sb.ToString());
         }
         catch (Exception ex)
         {

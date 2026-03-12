@@ -3,7 +3,7 @@
 @using CampRide.Data.Entities
 @using CampRide.Services
 @inject CaravanService CaravanSvc
-@inject IJSRuntime JSRuntime
+@inject IJSRuntime JsInterop
 
 <div class="hero">
     <div class="hero-content">
@@ -489,7 +489,7 @@
     {
         if (firstRender)
         {
-            await JSRuntime.InvokeVoidAsync("eval", @"
+            await JsInterop.InvokeVoidAsync("eval", @"
                 window._lightboxHandler = function(e) {
                     if (e.key === 'Escape') {
                         var lb = document.querySelector('.lightbox-overlay');
