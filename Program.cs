@@ -16,11 +16,15 @@ QuestPDF.Settings.License = LicenseType.Community;
 var builder = WebApplication.CreateBuilder(args);
 
 // Data Protection kulcsok perzisztens tárolása (Fly.io volume)
-var keysPath = new DirectoryInfo("/data/dataprotection-keys");
-if (!keysPath.Exists) keysPath.Create();
-builder.Services.AddDataProtection()
-    .PersistKeysToFileSystem(keysPath)
-    .SetApplicationName("CampRide");
+var dataDir = new DirectoryInfo("/data");
+if (dataDir.Exists)
+{
+    var keysPath = new DirectoryInfo("/data/dataprotection-keys");
+    if (!keysPath.Exists) keysPath.Create();
+    builder.Services.AddDataProtection()
+        .PersistKeysToFileSystem(keysPath)
+        .SetApplicationName("CampRide");
+}
 
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
