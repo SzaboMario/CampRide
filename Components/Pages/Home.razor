@@ -2,8 +2,8 @@
 @rendermode InteractiveServer
 @using CampRide.Data.Entities
 @using CampRide.Services
-@inject CaravanService CaravanService
-@inject IJSRuntime JS
+@inject CaravanService CaravanSvc
+@inject IJSRuntime JSRuntime
 
 <div class="hero">
     <div class="hero-content">
@@ -467,12 +467,12 @@
 
     protected override async Task OnInitializedAsync()
     {
-        caravans = await CaravanService.GetAllAsync();
+        caravans = await CaravanSvc.GetAllAsync();
     }
 
     private async Task SearchCaravans()
     {
-        caravans = await CaravanService.GetAvailableAsync(searchFrom, searchTo, searchCapacity);
+        caravans = await CaravanSvc.GetAvailableAsync(searchFrom, searchTo, searchCapacity);
         isFiltered = true;
     }
 
@@ -482,14 +482,14 @@
         searchTo = null;
         searchCapacity = null;
         isFiltered = false;
-        caravans = await CaravanService.GetAllAsync();
+        caravans = await CaravanSvc.GetAllAsync();
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender)
         {
-            await JS.InvokeVoidAsync("eval", @"
+            await JSRuntime.InvokeVoidAsync("eval", @"
                 window._lightboxHandler = function(e) {
                     if (e.key === 'Escape') {
                         var lb = document.querySelector('.lightbox-overlay');

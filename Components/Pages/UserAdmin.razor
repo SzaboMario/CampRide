@@ -4,7 +4,7 @@
 @using Microsoft.AspNetCore.Identity
 @using Microsoft.AspNetCore.Components.Authorization
 @using System.Security.Claims
-@inject UserManager<ApplicationUser> UserManager
+@inject UserManager<ApplicationUser> UserMgr
 @inject AuthenticationStateProvider AuthStateProvider
 @attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Admin")]
 
@@ -187,31 +187,31 @@ else
 
     private async Task LoadUsersAsync()
     {
-        users = UserManager.Users.ToList();
+        users = UserMgr.Users.ToList();
         userRoles.Clear();
         foreach (var u in users)
         {
-            var roles = await UserManager.GetRolesAsync(u);
+            var roles = await UserMgr.GetRolesAsync(u);
             userRoles[u.Id] = roles.ToList();
         }
     }
 
     private async Task MakeAdmin(string userId)
     {
-        var user = await UserManager.FindByIdAsync(userId);
+        var user = await UserMgr.FindByIdAsync(userId);
         if (user == null) return;
-        await UserManager.RemoveFromRoleAsync(user, "User");
-        await UserManager.AddToRoleAsync(user, "Admin");
+        await UserMgr.RemoveFromRoleAsync(user, "User");
+        await UserMgr.AddToRoleAsync(user, "Admin");
         await LoadUsersAsync();
         ShowMessage($"{user.Email} mostantól Admin.", true);
     }
 
     private async Task RemoveAdmin(string userId)
     {
-        var user = await UserManager.FindByIdAsync(userId);
+        var user = await UserMgr.FindByIdAsync(userId);
         if (user == null) return;
-        await UserManager.RemoveFromRoleAsync(user, "Admin");
-        await UserManager.AddToRoleAsync(user, "User");
+        await UserMgr.RemoveFromRoleAsync(user, "Admin");
+        await UserMgr.AddToRoleAsync(user, "User");
         await LoadUsersAsync();
         ShowMessage($"{user.Email} admin joga elvéve, mostantól User.", true);
     }
@@ -231,10 +231,10 @@ else
     private async Task DeleteUser()
     {
         if (deleteTargetId == null) return;
-        var user = await UserManager.FindByIdAsync(deleteTargetId);
+        var user = await UserMgr.FindByIdAsync(deleteTargetId);
         if (user != null)
         {
-            await UserManager.DeleteAsync(user);
+            await UserMgr.DeleteAsync(user);
             ShowMessage($"{user.Email} törölve.", true);
         }
         deleteTargetId = null;

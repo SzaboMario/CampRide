@@ -3,7 +3,7 @@
 @using CampRide.Services
 @rendermode InteractiveServer
 @attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Admin")]
-@inject CaravanService CaravanService
+@inject CaravanService CaravanSvc
 @inject IWebHostEnvironment Environment
 
 
@@ -181,7 +181,7 @@
 
     protected override async Task OnInitializedAsync()
     {
-        caravans = await CaravanService.GetAllAsync();
+        caravans = await CaravanSvc.GetAllAsync();
     }
 
     // ErrorHandling
@@ -240,18 +240,18 @@
             return;
 
         if(editingCaravan!.Id == 0)
-            await CaravanService.CreateAsync(editingCaravan);
+            await CaravanSvc.CreateAsync(editingCaravan);
         else
-            await CaravanService.UpdateAsync(editingCaravan);
+            await CaravanSvc.UpdateAsync(editingCaravan);
 
-        caravans = await CaravanService.GetAllAsync();
+        caravans = await CaravanSvc.GetAllAsync();
         editingCaravan = null;
     }
 
     private async Task Delete(CaravanEntity caravan)
     {
-        await CaravanService.SoftDeleteAsync(caravan.Id);
-        caravans = await CaravanService.GetAllAsync();
+        await CaravanSvc.SoftDeleteAsync(caravan.Id);
+        caravans = await CaravanSvc.GetAllAsync();
     }
 
     private void CancelEdit()
@@ -289,10 +289,10 @@
                 SortOrder = editingCaravan.Images.Count
             };
 
-            await CaravanService.AddImageAsync(imageEntity);
+            await CaravanSvc.AddImageAsync(imageEntity);
         }
 
-        editingCaravan = await CaravanService.GetByIdAsync(editingCaravan.Id);
+        editingCaravan = await CaravanSvc.GetByIdAsync(editingCaravan.Id);
         StateHasChanged();
     }
 
@@ -303,15 +303,15 @@
 
     private async Task SetPrimary(CaravanImageEntity image)
     {
-        await CaravanService.SetPrimaryImageAsync(image.Id);
-        editingCaravan = await CaravanService.GetByIdAsync(editingCaravan!.Id);
+        await CaravanSvc.SetPrimaryImageAsync(image.Id);
+        editingCaravan = await CaravanSvc.GetByIdAsync(editingCaravan!.Id);
         Validate();
     }
 
     private async Task DeleteImage(CaravanImageEntity image)
     {
-        await CaravanService.SoftDeleteImageAsync(image.Id);
-        editingCaravan = await CaravanService.GetByIdAsync(editingCaravan!.Id);
+        await CaravanSvc.SoftDeleteImageAsync(image.Id);
+        editingCaravan = await CaravanSvc.GetByIdAsync(editingCaravan!.Id);
         Validate();
     }
 }

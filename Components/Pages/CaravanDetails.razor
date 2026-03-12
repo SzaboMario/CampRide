@@ -4,11 +4,11 @@
 @using CampRide.Services
 @using CampRide.Components
 @using Microsoft.AspNetCore.Components.Authorization
-@inject CaravanService CaravanService
-@inject ReviewService ReviewService
+@inject CaravanService CaravanSvc
+@inject ReviewService ReviewSvc
 @inject AuthenticationStateProvider AuthStateProvider
 @inject NavigationManager Navigation
-@inject IJSRuntime JS
+@inject IJSRuntime JSRuntime
 
 <h1>Galéria</h1>
 
@@ -325,7 +325,7 @@
 
     protected override async Task OnParametersSetAsync()
     {
-        caravan = await CaravanService.GetByIdAsync(Id);
+        caravan = await CaravanSvc.GetByIdAsync(Id);
         if (caravan != null)
         {
             imageList = caravan.Images
@@ -335,8 +335,8 @@
                 .ToList();
         }
 
-        reviews = await ReviewService.GetByCaravanAsync(Id);
-        avgRating = await ReviewService.GetAverageRatingAsync(Id);
+        reviews = await ReviewSvc.GetByCaravanAsync(Id);
+        avgRating = await ReviewSvc.GetAverageRatingAsync(Id);
 
         var authState = await AuthStateProvider.GetAuthenticationStateAsync();
         var user = authState.User;
@@ -345,7 +345,7 @@
             isAuthenticated = true;
             currentUserId = user.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? "";
             if (!string.IsNullOrEmpty(currentUserId))
-                hasAlreadyReviewed = await ReviewService.HasUserReviewedAsync(Id, currentUserId);
+                hasAlreadyReviewed = await ReviewSvc.HasUserReviewedAsync(Id, currentUserId);
         }
     }
 
@@ -353,7 +353,7 @@
     {
         if (firstRender)
         {
-            await JS.InvokeVoidAsync("eval", @"
+            await JSRuntime.InvokeVoidAsync("eval", @"
                 window._lightboxHandler = function(e) {
                     if (e.key === 'Escape') {
                         var overlay = document.querySelector('.lightbox-overlay');
@@ -393,10 +393,10 @@
             Comment = newComment.Trim()
         };
 
-        await ReviewService.AddReviewAsync(review);
+        await ReviewSvc.AddReviewAsync(review);
 
-        reviews = await ReviewService.GetByCaravanAsync(Id);
-        avgRating = await ReviewService.GetAverageRatingAsync(Id);
+        reviews = await ReviewSvc.GetByCaravanAsync(Id);
+        avgRating = await ReviewSvc.GetAverageRatingAsync(Id);
         hasAlreadyReviewed = true;
         reviewSubmitted = true;
     }

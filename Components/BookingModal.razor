@@ -1,7 +1,7 @@
 @using CampRide.Data.Entities
 @using CampRide.Services
 @using Microsoft.AspNetCore.Components.Authorization
-@inject BookingService BookingService
+@inject BookingService BookingSvc
 @inject AuthenticationStateProvider AuthStateProvider
 
 @* ========== LÉPÉS 1: Naptár ========== *@
@@ -485,7 +485,7 @@
     protected override async Task OnInitializedAsync()
     {
         currentMonth = todayMonth;
-        bookedRanges = await BookingService.GetBookedRangesAsync(CaravanId);
+        bookedRanges = await BookingSvc.GetBookedRangesAsync(CaravanId);
 
         var authState = await AuthStateProvider.GetAuthenticationStateAsync();
         var user = authState.User;
@@ -620,7 +620,7 @@
                 booking.UserId = userId;
             }
 
-            await BookingService.CreateBookingAsync(booking);
+            await BookingSvc.CreateBookingAsync(booking);
             step = Step.Success;
         }
         catch (Exception ex)

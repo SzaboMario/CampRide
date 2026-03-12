@@ -4,7 +4,7 @@
 @using CampRide.Services
 @using Microsoft.AspNetCore.Components.Authorization
 @using System.Security.Claims
-@inject BookingService BookingService
+@inject BookingService BookingSvc
 @inject AuthenticationStateProvider AuthStateProvider
 @attribute [Microsoft.AspNetCore.Authorization.Authorize]
 
@@ -250,11 +250,11 @@ else
             var email = authState.User.FindFirst(ClaimTypes.Email)?.Value ?? "";
             if (!string.IsNullOrEmpty(email))
             {
-                try { await BookingService.LinkGuestBookingsAsync(currentUserId, email); }
+                try { await BookingSvc.LinkGuestBookingsAsync(currentUserId, email); }
                 catch { /* nem kritikus, továbblép */ }
             }
 
-            bookings = await BookingService.GetUserBookingsAsync(currentUserId);
+            bookings = await BookingSvc.GetUserBookingsAsync(currentUserId);
         }
         else
         {
@@ -279,8 +279,8 @@ else
         {
             try
             {
-                await BookingService.CancelByUserAsync(bookingId, currentUserId);
-                bookings = await BookingService.GetUserBookingsAsync(currentUserId);
+                await BookingSvc.CancelByUserAsync(bookingId, currentUserId);
+                bookings = await BookingSvc.GetUserBookingsAsync(currentUserId);
             }
             catch { /* hiba esetén oldal újratölt */ }
         }
