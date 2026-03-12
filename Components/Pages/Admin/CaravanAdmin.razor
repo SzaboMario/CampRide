@@ -1,0 +1,317 @@
+﻿@page "/admin/caravans"
+@using CampRide.Data.Entities
+@using CampRide.Services
+@rendermode InteractiveServer
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Admin")]
+@inject CaravanService CaravanService
+@inject IWebHostEnvironment Environment
+
+
+<h1>Lakóautó admin</h1>
+
+<button class="btn btn-success mb-3"
+        type="button"
+        @onclick="CreateNew">
+    Új lakóautó
+</button>
+
+@if(caravans == null)
+{
+    <p>Betöltés...</p>
+} else if(!caravans.Any())
+{
+    <p>Nincs rögzített lakóautó.</p>
+} else
+{
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>Név</th>
+                <th>Férőhely</th>
+                <th>Ár / nap</th>
+                <th>Műveletek</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach(var caravan in caravans)
+            {
+                <tr>
+                    <td>@caravan.Name</td>
+                    <td>@caravan.Capacity fő</td>
+                    <td>@caravan.PricePerDay.ToString("N0") Ft</td>
+                    <td>
+                        <button class="btn btn-sm btn-primary me-2"
+                                type="button"
+                                @onclick="() => Edit(caravan)">
+                            Szerkesztés
+                        </button>
+
+                        <button class="btn btn-sm btn-danger"
+                                type="button"
+                                @onclick="() => Delete(caravan)">
+                            Törlés
+                        </button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+
+   
+
+}
+
+@if(editingCaravan != null)
+{
+    <hr />
+
+    <h3>@(editingCaravan.Id == 0 ? "Új lakóautó" : "Szerkesztés")</h3>
+
+    <EditForm Model="editingCaravan" OnValidSubmit="Save">
+        <DataAnnotationsValidator />
+        <ValidationSummary />
+
+        <div class="mb-3">
+            <label class="form-label">Név</label>
+            <InputText class="form-control"
+                       @bind-Value="editingCaravan.Name" />
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label">Leírás</label>
+            <InputText class="form-control"
+                       @bind-Value="editingCaravan.Description" />
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label">Férőhely</label>
+            <InputNumber class="form-control"
+                         @bind-Value="editingCaravan.Capacity" />
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label">Napi ár (Ft)</label>
+            <InputNumber class="form-control"
+                         @bind-Value="editingCaravan.PricePerDay"
+                         placeholder="pl. 15000" />
+        </div>
+
+        <hr />
+        <div class="mb-3">
+            <h4>Képek feltöltése</h4>
+
+            <InputFile OnChange="UploadImage" multiple />
+
+            @if(editingCaravan.Images != null && editingCaravan.Images.Any())
+            {
+                <div class="mt-3">
+                    @foreach(var img in editingCaravan.Images
+                                .Where(i => !i.IsDeleted))
+                                @* .OrderByDescending(i => i.IsPrimary)
+                                .ThenBy(i => i.SortOrder)) *@
+                    {
+                        <div class="d-inline-block me-3 text-center">
+                            @if (img.IsPrimary)
+                            {
+                            
+                                <img src="@GetImagePath(img)"
+                                    style="width:150px;height:100px;object-fit:cover;border-radius:6px; border:solid 2px green"
+                                     title="@img.FileName" />
+                            }
+                            else
+                            {
+                                 <img src="@GetImagePath(img)"
+                                    style="width:150px;height:100px;object-fit:cover;border-radius:6px;"
+                                     title="@img.FileName" />
+                            }
+
+                            <div class="mt-1">
+                                @if (!img.IsPrimary)
+                                {
+                                        <button class="btn btn-sm btn-outline-success"
+                                                type="button"
+                                                @onclick="() => SetPrimary(img)">
+                                            Fő
+                                        </button>
+                                }
+                                
+                                <button class="btn btn-sm btn-outline-danger"
+                                        type="button"
+                                        @onclick="() => DeleteImage(img)">
+                                    X
+                                </button>
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+
+        @if(_errors.Any())
+        {
+            <div class="alert alert-danger">
+                <h5>Hibás tartalom:</h5>
+                <ul>
+                    @foreach(var error in _errors)
+                    {
+                        <li>@error</li>
+                    }
+                </ul>
+            </div>
+        } else
+        {
+            <button type="submit"
+                    class="btn btn-success m-2">
+                Mentés
+            </button>
+        }
+        <button type="button"
+                class="btn btn-secondary m-2"
+                @onclick="CancelEdit">
+            Mégse
+        </button>
+    </EditForm>
+}
+
+
+@code {
+    private List<CaravanEntity>? caravans;
+    private CaravanEntity? editingCaravan;
+    private List<string> _errors = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        caravans = await CaravanService.GetAllAsync();
+    }
+
+    // ErrorHandling
+    private void Validate()
+    {
+        _errors.Clear();
+
+        if (editingCaravan == null)
+            return;
+
+        if (!editingCaravan.Images.Any(x => x.IsPrimary && !x.IsDeleted))
+            _errors.Add("Kötelező 1db fő képet megjelölni");
+
+        if (string.IsNullOrWhiteSpace(editingCaravan.Name))
+            _errors.Add("A név kötelező.");
+
+        if (editingCaravan.Capacity <= 0)
+            _errors.Add("A férőhely legyen nagyobb mint 0.");
+    }
+
+    private void AddError(string error)
+    {
+        _errors.Add(error);
+    }
+
+    private void RemoveError(string error)
+    {
+        _errors.Remove(error);
+    }
+
+    private void CreateNew()
+    {
+        editingCaravan = new CaravanEntity();
+    }
+
+    private void Edit(CaravanEntity caravan)
+    {
+        _errors.Clear();
+        editingCaravan = new CaravanEntity
+        {
+            Id = caravan.Id,
+            Name = caravan.Name,
+            Description = caravan.Description,
+            Capacity = caravan.Capacity,
+            PricePerDay = caravan.PricePerDay,
+            Images = caravan.Images
+        };
+        Validate();
+    }
+
+    private async Task Save()
+    {
+        Validate();
+
+        if(_errors.Any())
+            return;
+
+        if(editingCaravan!.Id == 0)
+            await CaravanService.CreateAsync(editingCaravan);
+        else
+            await CaravanService.UpdateAsync(editingCaravan);
+
+        caravans = await CaravanService.GetAllAsync();
+        editingCaravan = null;
+    }
+
+    private async Task Delete(CaravanEntity caravan)
+    {
+        await CaravanService.SoftDeleteAsync(caravan.Id);
+        caravans = await CaravanService.GetAllAsync();
+    }
+
+    private void CancelEdit()
+    {
+        editingCaravan = null;
+    }
+
+    private async Task UploadImage(InputFileChangeEventArgs e)
+    {
+        if(editingCaravan == null)
+            return;
+
+        var caravanFolder = Path.Combine(
+            Environment.WebRootPath,
+            "images",
+            "caravans",
+            editingCaravan.Id.ToString());
+
+        Directory.CreateDirectory(caravanFolder);
+
+        foreach(var file in e.GetMultipleFiles())
+        {
+            var fileName = $"{Guid.NewGuid()}{Path.GetExtension(file.Name)}";
+            var filePath = Path.Combine(caravanFolder, fileName);
+
+            await using var stream = file.OpenReadStream(maxAllowedSize: 10_000_000);
+            await using var fileStream = File.Create(filePath);
+            await stream.CopyToAsync(fileStream);
+
+            var imageEntity = new CaravanImageEntity
+            {
+                CaravanId = editingCaravan.Id,
+                FileName = fileName,
+                IsPrimary = !editingCaravan.Images.Any(),
+                SortOrder = editingCaravan.Images.Count
+            };
+
+            await CaravanService.AddImageAsync(imageEntity);
+        }
+
+        editingCaravan = await CaravanService.GetByIdAsync(editingCaravan.Id);
+        StateHasChanged();
+    }
+
+    private string GetImagePath(CaravanImageEntity image)
+    {
+        return $"/images/caravans/{image.CaravanId}/{image.FileName}";
+    }
+
+    private async Task SetPrimary(CaravanImageEntity image)
+    {
+        await CaravanService.SetPrimaryImageAsync(image.Id);
+        editingCaravan = await CaravanService.GetByIdAsync(editingCaravan!.Id);
+        Validate();
+    }
+
+    private async Task DeleteImage(CaravanImageEntity image)
+    {
+        await CaravanService.SoftDeleteImageAsync(image.Id);
+        editingCaravan = await CaravanService.GetByIdAsync(editingCaravan!.Id);
+        Validate();
+    }
+}

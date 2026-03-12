@@ -1,0 +1,444 @@
+@page "/caravans/{Id:int}"
+@rendermode InteractiveServer
+@using CampRide.Data.Entities
+@using CampRide.Services
+@using CampRide.Components
+@using Microsoft.AspNetCore.Components.Authorization
+@inject CaravanService CaravanService
+@inject ReviewService ReviewService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+
+<h1>Galéria</h1>
+
+@if(caravan == null)
+{
+    <p>Adatok betöltése...</p>
+} else
+{
+    <h3>@caravan.Name</h3>
+    <p>@caravan.Description</p>
+    <p>
+        <strong>Férőhely:</strong> @caravan.Capacity fő
+        @if (caravan.PricePerDay > 0)
+        {
+            <span class="ms-3"><strong>Ár:</strong> @caravan.PricePerDay.ToString("N0") Ft / nap</span>
+        }
+    </p>
+
+    @if (avgRating > 0)
+    {
+        <p>
+            <strong>Értékelés:</strong>
+            @for (int s = 1; s <= 5; s++)
+            {
+                var si = s;
+                <span class="star @(si <= Math.Round(avgRating) ? "star-filled" : "star-empty")">★</span>
+            }
+            <span class="text-muted ms-1">(@reviews.Count értékelés)</span>
+        </p>
+    }
+
+    <hr />
+
+    @if(!caravan.Images.Any())
+    {
+        <p>Nincsenek feltöltött képek.</p>
+    } else
+    {
+        <div class="gallery-grid">
+            @foreach(var (image, index) in imageList.Select((img, i) => (img, i)))
+            {
+                <div class="gallery-item">
+                    <img src="@GetImagePath(image)" @onclick="() => OpenLightbox(index)" style="cursor:pointer;" />
+                    @if(image.IsPrimary)
+                    {
+                        <div class="primary-badge">Fő kép</div>
+                    }
+                </div>
+            }
+        </div>
+    }
+
+    <br />
+
+    <button class="btn btn-success" @onclick="OpenBooking">
+        Foglalás indítása
+    </button>
+
+    <button class="btn btn-secondary ms-2" type="button" @onclick="BackToList">
+        Vissza
+    </button>
+
+    @* ===== Értékelések szekció ===== *@
+    <div class="reviews-section mt-5">
+        <h4>Értékelések</h4>
+
+        @if (reviews.Any())
+        {
+            @foreach (var review in reviews)
+            {
+                <div class="review-card">
+                    <div class="review-header">
+                        <span class="review-name">@review.CustomerName</span>
+                        <span class="review-stars ms-2">
+                            @for (int s = 1; s <= 5; s++)
+                            {
+                                var si = s;
+                                <span class="@(si <= review.Rating ? "star-filled" : "star-empty")">★</span>
+                            }
+                        </span>
+                        <span class="review-date text-muted ms-2">@review.CreatedAt.ToString("yyyy. MM. dd.")</span>
+                    </div>
+                    @if (!string.IsNullOrWhiteSpace(review.Comment))
+                    {
+                        <p class="review-comment">@review.Comment</p>
+                    }
+                </div>
+            }
+        }
+        else
+        {
+            <p class="text-muted">Még nincsenek értékelések. Legyél az első!</p>
+        }
+
+        @* Értékelés beküldése – csak bejelentkezett, User szerepkörű felhasználónak *@
+        @if (isAuthenticated && !hasAlreadyReviewed)
+        {
+            <div class="review-form mt-4">
+                <h5>Értékelésed</h5>
+
+                @if (!string.IsNullOrEmpty(reviewError))
+                {
+                    <div class="alert alert-danger py-2">@reviewError</div>
+                }
+                @if (reviewSubmitted)
+                {
+                    <div class="alert alert-success py-2">Köszönjük az értékelésed!</div>
+                }
+                else
+                {
+                    <div class="mb-2">
+                        <label class="form-label">Csillagok:</label>
+                        <div class="star-picker">
+                            @for (int s = 1; s <= 5; s++)
+                            {
+                                var si = s;
+                                <span class="star-pick @(si <= newRating ? "star-filled" : "star-empty")"
+                                      @onclick="() => newRating = si"
+                                      style="cursor:pointer;font-size:1.8rem;">★</span>
+                            }
+                        </div>
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label">Megjegyzés (opcionális)</label>
+                        <textarea class="form-control" rows="3" @bind="newComment"
+                                  placeholder="Írd le tapasztalatod..."></textarea>
+                    </div>
+                    <button class="btn btn-primary btn-sm" @onclick="SubmitReview"
+                            disabled="@(newRating == 0)">
+                        Értékelés elküldése
+                    </button>
+                }
+            </div>
+        }
+        else if (!isAuthenticated)
+        {
+            <p class="text-muted mt-3"><a href="/account/login">Jelentkezz be</a> az értékeléshez!</p>
+        }
+        else if (hasAlreadyReviewed)
+        {
+            <p class="text-muted mt-3"><em>Már értékelted ezt a lakóautót.</em></p>
+        }
+    </div>
+}
+
+@if(bookingOpen && caravan != null)
+{
+    <BookingModal CaravanId="Id"
+                  CaravanName="@caravan.Name"
+                  PricePerDay="@caravan.PricePerDay"
+                  OnClose="CloseBooking" />
+}
+
+@if(lightboxOpen)
+{
+    <div class="lightbox-overlay" @onclick="CloseLightbox">
+        <button class="lightbox-close" @onclick="CloseLightbox" @onclick:stopPropagation="true">&times;</button>
+
+        @if(imageList.Count > 1)
+        {
+            <button class="lightbox-nav lightbox-prev" @onclick="PrevImage" @onclick:stopPropagation="true">&#8249;</button>
+        }
+
+        <div class="lightbox-content" @onclick:stopPropagation="true">
+            <img src="@GetImagePath(imageList[currentIndex])" />
+            @if(imageList.Count > 1)
+            {
+                <div class="lightbox-counter">@(currentIndex + 1) / @imageList.Count</div>
+            }
+        </div>
+
+        @if(imageList.Count > 1)
+        {
+            <button class="lightbox-nav lightbox-next" @onclick="NextImage" @onclick:stopPropagation="true">&#8250;</button>
+        }
+    </div>
+}
+
+<style>
+    /* Stars */
+    .star-filled { color: #f5a623; }
+    .star-empty  { color: #ddd; }
+    .star-pick   { transition: color 0.1s; }
+    .star-pick:hover { color: #f5a623; }
+
+    /* Reviews */
+    .reviews-section { border-top: 1px solid #e0e0e0; padding-top: 1.5rem; }
+
+    .review-card {
+        background: #f8f9fa;
+        border-radius: 10px;
+        padding: 1rem 1.25rem;
+        margin-bottom: 0.75rem;
+        border-left: 4px solid #3a0647;
+    }
+
+    .review-header { display: flex; align-items: center; flex-wrap: wrap; gap: 0.25rem; margin-bottom: 0.25rem; }
+    .review-name { font-weight: 600; }
+    .review-date { font-size: 0.8rem; }
+    .review-comment { margin-bottom: 0; color: #444; font-size: 0.95rem; }
+
+    .review-form {
+        background: #f0f4ff;
+        border-radius: 12px;
+        padding: 1.25rem;
+        max-width: 520px;
+    }
+
+    .star-picker { display: flex; gap: 4px; margin-bottom: 0.5rem; }
+
+    /* Lightbox */
+    .lightbox-overlay {
+        position: fixed;
+        inset: 0;
+        background: #000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+    }
+
+    .lightbox-content {
+        position: relative;
+        max-width: 85vw;
+        max-height: 90vh;
+        text-align: center;
+    }
+
+    .lightbox-content img {
+        max-width: 85vw;
+        max-height: 85vh;
+        object-fit: contain;
+        border-radius: 6px;
+    }
+
+    .lightbox-counter {
+        color: white;
+        margin-top: 0.5rem;
+        font-size: 0.9rem;
+        opacity: 0.8;
+    }
+
+    .lightbox-close {
+        position: fixed;
+        top: 1rem;
+        right: 1.5rem;
+        background: rgba(255,255,255,0.15);
+        border: none;
+        border-radius: 50%;
+        width: 2.5rem;
+        height: 2.5rem;
+        font-size: 1.5rem;
+        color: white;
+        cursor: pointer;
+        z-index: 10000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        line-height: 1;
+    }
+
+    .lightbox-close:hover { background: rgba(255,255,255,0.3); }
+
+    .lightbox-nav {
+        background: rgba(255,255,255,0.15);
+        border: none;
+        color: white;
+        font-size: 3rem;
+        padding: 0.5rem 1rem;
+        cursor: pointer;
+        border-radius: 4px;
+        z-index: 10000;
+        line-height: 1;
+        user-select: none;
+    }
+
+    .lightbox-nav:hover { background: rgba(255,255,255,0.3); }
+    .lightbox-prev { margin-right: 1rem; }
+    .lightbox-next { margin-left: 1rem; }
+
+    @@media (max-width: 768px) {
+        .review-form { max-width: 100%; }
+
+        .lightbox-nav {
+            font-size: 2rem;
+            padding: 0.3rem 0.6rem;
+        }
+
+        .lightbox-prev { margin-right: 0.3rem; }
+        .lightbox-next { margin-left: 0.3rem; }
+    }
+</style>
+
+@code {
+    [Parameter]
+    public int Id { get; set; }
+
+    private CaravanEntity? caravan;
+    private List<CaravanImageEntity> imageList = new();
+    private bool lightboxOpen = false;
+    private int currentIndex = 0;
+    private bool bookingOpen = false;
+
+    // Reviews
+    private List<ReviewEntity> reviews = new();
+    private double avgRating = 0;
+    private bool isAuthenticated = false;
+    private string currentUserId = "";
+    private bool hasAlreadyReviewed = false;
+    private int newRating = 0;
+    private string newComment = "";
+    private string? reviewError;
+    private bool reviewSubmitted = false;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        caravan = await CaravanService.GetByIdAsync(Id);
+        if (caravan != null)
+        {
+            imageList = caravan.Images
+                .Where(i => !i.IsDeleted)
+                .OrderByDescending(i => i.IsPrimary)
+                .ThenBy(i => i.SortOrder)
+                .ToList();
+        }
+
+        reviews = await ReviewService.GetByCaravanAsync(Id);
+        avgRating = await ReviewService.GetAverageRatingAsync(Id);
+
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+        if (user.Identity?.IsAuthenticated == true)
+        {
+            isAuthenticated = true;
+            currentUserId = user.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? "";
+            if (!string.IsNullOrEmpty(currentUserId))
+                hasAlreadyReviewed = await ReviewService.HasUserReviewedAsync(Id, currentUserId);
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await JS.InvokeVoidAsync("eval", @"
+                window._lightboxHandler = function(e) {
+                    if (e.key === 'Escape') {
+                        var overlay = document.querySelector('.lightbox-overlay');
+                        if (overlay) overlay.click();
+                    } else if (e.key === 'ArrowRight') {
+                        var next = document.querySelector('.lightbox-next');
+                        if (next) next.click();
+                    } else if (e.key === 'ArrowLeft') {
+                        var prev = document.querySelector('.lightbox-prev');
+                        if (prev) prev.click();
+                    }
+                };
+                document.removeEventListener('keydown', window._lightboxHandler);
+                document.addEventListener('keydown', window._lightboxHandler);
+            ");
+        }
+    }
+
+    private async Task SubmitReview()
+    {
+        reviewError = null;
+        if (newRating < 1 || newRating > 5)
+        {
+            reviewError = "Kérjük, válassz 1–5 csillagot.";
+            return;
+        }
+
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var name = authState.User.Identity?.Name ?? "Ismeretlen";
+
+        var review = new ReviewEntity
+        {
+            CaravanId = Id,
+            UserId = currentUserId,
+            CustomerName = name,
+            Rating = newRating,
+            Comment = newComment.Trim()
+        };
+
+        await ReviewService.AddReviewAsync(review);
+
+        reviews = await ReviewService.GetByCaravanAsync(Id);
+        avgRating = await ReviewService.GetAverageRatingAsync(Id);
+        hasAlreadyReviewed = true;
+        reviewSubmitted = true;
+    }
+
+    private void OpenLightbox(int index)
+    {
+        currentIndex = index;
+        lightboxOpen = true;
+    }
+
+    private void CloseLightbox()
+    {
+        lightboxOpen = false;
+    }
+
+    private void PrevImage()
+    {
+        currentIndex = (currentIndex - 1 + imageList.Count) % imageList.Count;
+    }
+
+    private void NextImage()
+    {
+        currentIndex = (currentIndex + 1) % imageList.Count;
+    }
+
+    private string GetImagePath(CaravanImageEntity image)
+    {
+        return $"/images/caravans/{image.CaravanId}/{image.FileName}";
+    }
+
+    private void OpenBooking()
+    {
+        bookingOpen = true;
+    }
+
+    private void CloseBooking()
+    {
+        bookingOpen = false;
+    }
+
+    private void BackToList()
+    {
+        Navigation.NavigateTo("/caravans");
+    }
+}

@@ -1,0 +1,570 @@
+@page "/"
+@rendermode InteractiveServer
+@using CampRide.Data.Entities
+@using CampRide.Services
+@inject CaravanService CaravanService
+@inject IJSRuntime JS
+
+<div class="hero">
+    <div class="hero-content">
+        <h1>Fedezd fel a világot lakóautóval</h1>
+        <p>Bérelj prémium lakóautót, és indulj útnak kényelmesen.</p>
+        <a href="/caravans" class="btn btn-light btn-lg mt-3">
+            Lakóautók megtekintése
+        </a>
+    </div>
+</div>
+
+<section class="container mt-5">
+    <h2 class="mb-4 text-center">Elérhető lakóautóink</h2>
+
+    @* Keresősáv *@
+    <div class="search-bar mb-4">
+        <div class="search-field">
+            <label>Mettől</label>
+            <input type="date" class="form-control" @bind="searchFrom" />
+        </div>
+        <div class="search-field">
+            <label>Meddig</label>
+            <input type="date" class="form-control" @bind="searchTo" />
+        </div>
+        <div class="search-field">
+            <label>Min. férőhely</label>
+            <input type="number" class="form-control" @bind="searchCapacity" min="1" placeholder="pl. 4" />
+        </div>
+        <div class="search-field search-btn-wrap">
+            <button class="btn btn-primary" @onclick="SearchCaravans">Keresés</button>
+            @if (isFiltered)
+            {
+                <button class="btn btn-outline-secondary ms-2" @onclick="ClearSearch">Törlés</button>
+            }
+        </div>
+    </div>
+
+    @if(caravans == null)
+    {
+        <p class="text-center">Betöltés...</p>
+    } else if(!caravans.Any())
+    {
+        <p class="text-center">
+            @if (isFiltered)
+            {
+                <span>Nincs szabad lakóautó a megadott feltételekkel.</span>
+            }
+            else
+            {
+                <span>Jelenleg nincs elérhető lakóautó.</span>
+            }
+        </p>
+    } else
+    {
+        <div class="caravan-grid">
+            @foreach(var caravan in caravans)
+            {
+                var primaryImage = caravan.Images
+                    .Where(i => !i.IsDeleted)
+                    .OrderByDescending(i => i.IsPrimary)
+                    .ThenBy(i => i.SortOrder)
+                    .FirstOrDefault();
+
+                <div class="caravan-card" style="cursor:pointer" @onclick="() => OpenModal(caravan)">
+                    <div class="image-wrapper">
+                        @if(primaryImage != null)
+                        {
+                            <img src="@GetImagePath(primaryImage)" />
+                        } else
+                        {
+                            <div class="no-image">Nincs kép</div>
+                        }
+
+                        <span class="capacity-badge">
+                            @caravan.Capacity fő
+                        </span>
+                    </div>
+
+                    <div class="card-body">
+                        <h4>@caravan.Name</h4>
+                        <p>@caravan.Description</p>
+                        @if (caravan.PricePerDay > 0)
+                        {
+                            <div class="price-tag">@caravan.PricePerDay.ToString("N0") Ft<span class="price-unit"> / nap</span></div>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    }
+</section>
+
+@* Modal *@
+@if(modalCaravan != null)
+{
+    <div class="modal-overlay" @onclick="CloseModal">
+        <div class="modal-box" @onclick:stopPropagation="true">
+            <button class="modal-close" @onclick="CloseModal">&times;</button>
+
+            <h3 class="modal-title">@modalCaravan.Name</h3>
+            <p class="modal-description">@modalCaravan.Description</p>
+            <p>
+                <strong>Férőhely:</strong> @modalCaravan.Capacity fő
+                @if (modalCaravan.PricePerDay > 0)
+                {
+                    <span class="ms-3"><strong>Ár:</strong> @modalCaravan.PricePerDay.ToString("N0") Ft / nap</span>
+                }
+            </p>
+
+            @if(modalImages.Any())
+            {
+                <div class="modal-gallery">
+                    @foreach(var (image, index) in modalImages.Select((img, i) => (img, i)))
+                    {
+                        <div class="modal-gallery-item" @onclick="() => OpenLightbox(index)" @onclick:stopPropagation="true">
+                            <img src="@GetImagePath(image)" />
+                            @if(image.IsPrimary)
+                            {
+                                <div class="primary-badge">Fő</div>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+
+            <div class="modal-footer-actions">
+                <button class="btn btn-success btn-lg" @onclick="OpenBooking">
+                    Foglalás
+                </button>
+                <button class="btn btn-secondary" @onclick="CloseModal">Bezárás</button>
+            </div>
+        </div>
+    </div>
+}
+
+@* Booking Modal *@
+@if (bookingOpen && modalCaravan != null)
+{
+    <BookingModal CaravanId="bookingCaravanId"
+                  CaravanName="@bookingCaravanName"
+                  PricePerDay="bookingPricePerDay"
+                  OnClose="CloseBooking" />
+}
+
+@* Lightbox *@
+@if(lightboxOpen)
+{
+    <div class="lightbox-overlay" @onclick="CloseLightbox">
+        <button class="lightbox-close" @onclick="CloseLightbox" @onclick:stopPropagation="true">&times;</button>
+        <div class="lightbox-content" @onclick:stopPropagation="true">
+            <img src="@GetImagePath(modalImages[currentIndex])" />
+            @if(modalImages.Count > 1)
+            {
+                <div class="lightbox-counter">@(currentIndex + 1) / @modalImages.Count</div>
+            }
+        </div>
+    </div>
+    @if(modalImages.Count > 1)
+    {
+        <button class="lightbox-nav lightbox-prev" @onclick="PrevImage">&#8249;</button>
+        <button class="lightbox-nav lightbox-next" @onclick="NextImage">&#8250;</button>
+    }
+}
+
+<style>
+    /* Search bar */
+    .search-bar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+        background: #f8f9fa;
+        border-radius: 14px;
+        padding: 1.25rem 1.5rem;
+        align-items: flex-end;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    }
+
+    .search-field {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        flex: 1;
+        min-width: 140px;
+    }
+
+    .search-field label {
+        font-size: 0.8rem;
+        font-weight: 600;
+        color: #555;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+    }
+
+    .search-btn-wrap {
+        flex-direction: row;
+        align-items: center;
+        flex: none;
+        min-width: auto;
+        padding-top: 1.3rem;
+    }
+
+    /* Price tag */
+    .price-tag {
+        font-size: 1.1rem;
+        font-weight: 700;
+        color: #3a0647;
+        margin-top: 0.4rem;
+    }
+
+    .price-unit {
+        font-size: 0.85rem;
+        font-weight: 400;
+        color: #666;
+    }
+
+    /* Modal */
+    .modal-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,0.55);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+        padding: 1rem;
+    }
+
+    .modal-box {
+        background: white;
+        border-radius: 14px;
+        padding: 2rem;
+        width: 100%;
+        max-width: 680px;
+        max-height: 90vh;
+        overflow-y: auto;
+        position: relative;
+        box-shadow: 0 8px 40px rgba(0,0,0,0.25);
+    }
+
+    .modal-close {
+        position: absolute;
+        top: 1rem;
+        right: 1rem;
+        background: #f0f0f0;
+        border: none;
+        border-radius: 50%;
+        width: 2.2rem;
+        height: 2.2rem;
+        font-size: 1.4rem;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        line-height: 1;
+    }
+
+    .modal-close:hover { background: #ddd; }
+
+    .modal-title {
+        margin-bottom: 0.5rem;
+        color: #3a0647;
+    }
+
+    .modal-description {
+        color: #555;
+        margin-bottom: 1rem;
+    }
+
+    .modal-gallery {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        margin: 1rem 0;
+    }
+
+    .modal-gallery-item {
+        position: relative;
+        cursor: pointer;
+        border-radius: 6px;
+        overflow: hidden;
+        flex: 0 0 calc(33.333% - 0.34rem);
+    }
+
+    .modal-gallery-item img {
+        width: 100%;
+        height: 110px;
+        object-fit: cover;
+        display: block;
+        transition: opacity 0.15s;
+    }
+
+    .modal-gallery-item:hover img { opacity: 0.85; }
+
+    .primary-badge {
+        position: absolute;
+        top: 4px;
+        left: 4px;
+        display: inline-block;
+        width: auto;
+        height: auto;
+        background: rgba(25,135,84,0.85);
+        color: white;
+        font-size: 0.7rem;
+        padding: 1px 6px;
+        border-radius: 4px;
+        line-height: normal;
+    }
+
+    .modal-footer-actions {
+        display: flex;
+        gap: 0.75rem;
+        margin-top: 1.5rem;
+        align-items: center;
+    }
+
+    /* Lightbox */
+    .lightbox-overlay {
+        position: fixed;
+        inset: 0;
+        background: #000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+    }
+
+    .lightbox-content {
+        position: relative;
+        max-width: 85vw;
+        max-height: 90vh;
+        text-align: center;
+    }
+
+    .lightbox-content img {
+        max-width: 85vw;
+        max-height: 85vh;
+        object-fit: contain;
+        border-radius: 6px;
+    }
+
+    .lightbox-counter {
+        color: white;
+        margin-top: 0.5rem;
+        font-size: 0.9rem;
+        opacity: 0.8;
+    }
+
+    .lightbox-close {
+        position: fixed;
+        top: 1rem;
+        right: 1.5rem;
+        background: rgba(255,255,255,0.15);
+        border: none;
+        border-radius: 50%;
+        width: 2.5rem;
+        height: 2.5rem;
+        font-size: 1.5rem;
+        color: white;
+        cursor: pointer;
+        z-index: 10000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        line-height: 1;
+    }
+
+    .lightbox-close:hover { background: rgba(255,255,255,0.3); }
+
+    .lightbox-nav {
+        position: fixed;
+        top: 50%;
+        transform: translateY(-50%);
+        background: rgba(255,255,255,0.15);
+        border: none;
+        color: white;
+        font-size: 3rem;
+        padding: 0.5rem 1rem;
+        cursor: pointer;
+        border-radius: 4px;
+        z-index: 10000;
+        line-height: 1;
+        user-select: none;
+    }
+
+    .lightbox-nav:hover { background: rgba(255,255,255,0.3); }
+    .lightbox-prev { left: 1rem; }
+    .lightbox-next { right: 1rem; }
+
+    /* Mobile responsive */
+    @@media (max-width: 768px) {
+        /* Search bar – stack vertically */
+        .search-bar {
+            flex-direction: column;
+            padding: 1rem;
+            gap: 0.6rem;
+        }
+
+        .search-field {
+            min-width: 100%;
+        }
+
+        .search-btn-wrap {
+            padding-top: 0;
+            width: 100%;
+            gap: 0.5rem;
+        }
+
+        .search-btn-wrap .btn {
+            flex: 1;
+        }
+
+        /* Modal – full width */
+        .modal-box {
+            padding: 1.25rem 1rem;
+            border-radius: 10px;
+            max-height: 95vh;
+        }
+
+        /* Modal gallery – 2 columns */
+        .modal-gallery-item {
+            flex: 0 0 calc(50% - 0.25rem);
+        }
+
+        .modal-footer-actions {
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .modal-footer-actions .btn {
+            width: 100%;
+        }
+
+        /* Lightbox nav */
+        .lightbox-nav {
+            font-size: 2rem;
+            padding: 0.3rem 0.6rem;
+        }
+
+        .lightbox-prev { left: 0.25rem; }
+        .lightbox-next { right: 0.25rem; }
+    }
+</style>
+
+@code {
+    private List<CaravanEntity>? caravans;
+    private CaravanEntity? modalCaravan;
+    private List<CaravanImageEntity> modalImages = new();
+    private bool lightboxOpen = false;
+    private int currentIndex = 0;
+
+    private bool bookingOpen = false;
+    private int bookingCaravanId;
+    private string bookingCaravanName = "";
+    private decimal bookingPricePerDay;
+
+    // Search
+    private DateTime? searchFrom;
+    private DateTime? searchTo;
+    private int? searchCapacity;
+    private bool isFiltered = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        caravans = await CaravanService.GetAllAsync();
+    }
+
+    private async Task SearchCaravans()
+    {
+        caravans = await CaravanService.GetAvailableAsync(searchFrom, searchTo, searchCapacity);
+        isFiltered = true;
+    }
+
+    private async Task ClearSearch()
+    {
+        searchFrom = null;
+        searchTo = null;
+        searchCapacity = null;
+        isFiltered = false;
+        caravans = await CaravanService.GetAllAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await JS.InvokeVoidAsync("eval", @"
+                window._lightboxHandler = function(e) {
+                    if (e.key === 'Escape') {
+                        var lb = document.querySelector('.lightbox-overlay');
+                        if (lb) { lb.click(); return; }
+                        var mo = document.querySelector('.modal-overlay');
+                        if (mo) mo.click();
+                    } else if (e.key === 'ArrowRight') {
+                        var next = document.querySelector('.lightbox-next');
+                        if (next) next.click();
+                    } else if (e.key === 'ArrowLeft') {
+                        var prev = document.querySelector('.lightbox-prev');
+                        if (prev) prev.click();
+                    }
+                };
+                document.removeEventListener('keydown', window._lightboxHandler);
+                document.addEventListener('keydown', window._lightboxHandler);
+            ");
+        }
+    }
+
+    private void OpenModal(CaravanEntity caravan)
+    {
+        modalCaravan = caravan;
+        modalImages = caravan.Images
+            .Where(i => !i.IsDeleted)
+            .OrderByDescending(i => i.IsPrimary)
+            .ThenBy(i => i.SortOrder)
+            .ToList();
+        lightboxOpen = false;
+        currentIndex = 0;
+    }
+
+    private void CloseModal()
+    {
+        modalCaravan = null;
+        lightboxOpen = false;
+    }
+
+    private void OpenBooking()
+    {
+        if (modalCaravan == null) return;
+        bookingCaravanId = modalCaravan.Id;
+        bookingCaravanName = modalCaravan.Name;
+        bookingPricePerDay = modalCaravan.PricePerDay;
+        bookingOpen = true;
+    }
+
+    private void CloseBooking()
+    {
+        bookingOpen = false;
+    }
+
+    private void OpenLightbox(int index)
+    {
+        currentIndex = index;
+        lightboxOpen = true;
+    }
+
+    private void CloseLightbox()
+    {
+        lightboxOpen = false;
+    }
+
+    private void PrevImage()
+    {
+        currentIndex = (currentIndex - 1 + modalImages.Count) % modalImages.Count;
+    }
+
+    private void NextImage()
+    {
+        currentIndex = (currentIndex + 1) % modalImages.Count;
+    }
+
+    private string GetImagePath(CaravanImageEntity image)
+    {
+        return $"/images/caravans/{image.CaravanId}/{image.FileName}";
+    }
+}

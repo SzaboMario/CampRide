@@ -1,0 +1,57 @@
+@page "/account/login"
+@model CampRide.Pages.Account.LoginModel
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Bejelentkezés – CampRide</title>
+    <link rel="stylesheet" href="/lib/bootstrap/dist/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="/app.css" />
+    <style>
+        body { background: #f5f5f5; }
+        .auth-container { display: flex; justify-content: center; align-items: center; min-height: 100vh; }
+        .auth-card { background: white; border-radius: 12px; padding: 2rem; width: 100%; max-width: 420px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); position: relative; }
+        .auth-card h2 { margin-bottom: 1.5rem; color: #3a0647; text-align: center; }
+        .brand { text-align: center; margin-bottom: 1rem; font-size: 1.5rem; font-weight: bold; color: #05276e; }
+        .auth-close { position: absolute; top: 1rem; right: 1rem; width: 2rem; height: 2rem; border-radius: 50%; background: #f0f0f0; border: none; font-size: 1.1rem; cursor: pointer; display: flex; align-items: center; justify-content: center; color: #555; text-decoration: none; line-height: 1; }
+        .auth-close:hover { background: #ddd; color: #222; }
+    </style>
+</head>
+<body>
+    <div class="auth-container">
+        <div class="auth-card">
+            <a href="/" class="auth-close" title="Vissza a főoldalra">&times;</a>
+            <div class="brand">CampRide</div>
+            <h2>Bejelentkezés</h2>
+
+            @if (!string.IsNullOrEmpty(Model.ErrorMessage))
+            {
+                <div class="alert alert-danger">@Model.ErrorMessage</div>
+            }
+
+            <form method="post">
+                @Html.AntiForgeryToken()
+                <div class="mb-3">
+                    <label class="form-label">Email cím</label>
+                    <input type="email" name="Email" class="form-control" placeholder="pelda@email.hu" value="@Model.Email" required />
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Jelszó</label>
+                    <input type="password" name="Password" class="form-control" required />
+                </div>
+                <div class="mb-3 form-check">
+                    <input type="checkbox" name="RememberMe" class="form-check-input" id="rememberMe" value="true" />
+                    <label class="form-check-label" for="rememberMe">Emlékezz rám</label>
+                </div>
+                <button type="submit" class="btn btn-primary w-100">Bejelentkezés</button>
+            </form>
+
+            <hr />
+            <p class="text-center mb-0">
+                Még nincs fiókod? <a href="/account/register">Regisztrálj</a>
+            </p>
+        </div>
+    </div>
+</body>
+</html>

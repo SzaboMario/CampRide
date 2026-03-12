@@ -1,0 +1,269 @@
+@page "/admin/stats"
+@rendermode InteractiveServer
+@using CampRide.Data
+@using CampRide.Data.Entities
+@using Microsoft.EntityFrameworkCore
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Admin")]
+@inject AppDbContext DbContext
+
+<h1 class="mb-4">📊 Statisztikák</h1>
+
+@if (stats == null)
+{
+    <p>Betöltés...</p>
+}
+else
+{
+    @* KPI kártyák *@
+    <div class="kpi-grid">
+        <div class="kpi-card kpi-total">
+            <div class="kpi-value">@stats.TotalBookings</div>
+            <div class="kpi-label">Összes foglalás</div>
+        </div>
+        <div class="kpi-card kpi-approved">
+            <div class="kpi-value">@stats.ApprovedBookings</div>
+            <div class="kpi-label">Jóváhagyott</div>
+        </div>
+        <div class="kpi-card kpi-pending">
+            <div class="kpi-value">@stats.PendingBookings</div>
+            <div class="kpi-label">Folyamatban</div>
+        </div>
+        <div class="kpi-card kpi-revenue">
+            <div class="kpi-value">@stats.TotalRevenue.ToString("N0") Ft</div>
+            <div class="kpi-label">Becsült bevétel</div>
+        </div>
+    </div>
+
+    @* Lakóautónkénti statisztika *@
+    <div class="mt-5">
+        <h4 class="mb-3">Lakóautónkénti összesítő</h4>
+        @if (stats.PerCaravan.Any())
+        {
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Lakóautó</th>
+                            <th class="text-end">Foglalások</th>
+                            <th class="text-end">Jóváhagyott</th>
+                            <th class="text-end">Lemondott</th>
+                            <th class="text-end">Becsült bevétel</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var row in stats.PerCaravan.OrderByDescending(r => r.Total))
+                        {
+                            <tr>
+                                <td><strong>@row.CaravanName</strong></td>
+                                <td class="text-end">@row.Total</td>
+                                <td class="text-end text-success">@row.Approved</td>
+                                <td class="text-end text-secondary">@row.Cancelled</td>
+                                <td class="text-end fw-semibold">@row.Revenue.ToString("N0") Ft</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+        else
+        {
+            <p class="text-muted">Még nincsenek foglalások.</p>
+        }
+    </div>
+
+    @* Utolsó 5 foglalás *@
+    <div class="mt-5">
+        <h4 class="mb-3">Legutóbbi foglalások</h4>
+        @if (stats.RecentBookings.Any())
+        {
+            <div class="recent-list">
+                @foreach (var b in stats.RecentBookings)
+                {
+                    <div class="recent-item">
+                        <div class="recent-main">
+                            <span class="recent-name">@b.CustomerName</span>
+                            <span class="recent-caravan">@b.Caravan?.Name</span>
+                        </div>
+                        <div class="recent-meta">
+                            <span>@b.FromDate.ToString("MM. dd.") – @b.ToDate.ToString("MM. dd.")</span>
+                            <span class="recent-status @GetStatusBadge(b.Status)">@GetStatusLabel(b.Status)</span>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+        else
+        {
+            <p class="text-muted">Még nincsenek foglalások.</p>
+        }
+    </div>
+}
+
+<style>
+    .kpi-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 1rem;
+        margin-bottom: 1rem;
+    }
+
+    .kpi-card {
+        border-radius: 14px;
+        padding: 1.5rem 1.25rem;
+        text-align: center;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+    }
+
+    .kpi-value {
+        font-size: 2rem;
+        font-weight: 800;
+        line-height: 1;
+        margin-bottom: 0.4rem;
+    }
+
+    .kpi-label {
+        font-size: 0.85rem;
+        font-weight: 500;
+        opacity: 0.8;
+    }
+
+    .kpi-total    { background: linear-gradient(135deg, #3a0647, #6a1e99); color: white; }
+    .kpi-approved { background: linear-gradient(135deg, #198754, #2dbe78); color: white; }
+    .kpi-pending  { background: linear-gradient(135deg, #e89e00, #ffc107); color: #333; }
+    .kpi-revenue  { background: linear-gradient(135deg, #0d6efd, #4da3ff); color: white; }
+
+    .recent-list { display: flex; flex-direction: column; gap: 0.6rem; max-width: 700px; }
+
+    .recent-item {
+        background: #f8f9fa;
+        border-radius: 10px;
+        padding: 0.75rem 1rem;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+
+    .recent-main { display: flex; flex-direction: column; gap: 2px; }
+    .recent-name { font-weight: 600; }
+    .recent-caravan { font-size: 0.85rem; color: #666; }
+    .recent-meta { display: flex; align-items: center; gap: 0.75rem; font-size: 0.85rem; }
+
+    .recent-status {
+        font-size: 0.75rem;
+        padding: 0.2rem 0.6rem;
+        border-radius: 10px;
+        font-weight: 600;
+    }
+
+    .badge-pending   { background: #fff3cd; color: #856404; }
+    .badge-approved  { background: #d1e7dd; color: #0f5132; }
+    .badge-cancelled { background: #e2e3e5; color: #41464b; }
+
+    @@media (max-width: 768px) {
+        .kpi-grid {
+            grid-template-columns: repeat(2, 1fr);
+            gap: 0.75rem;
+        }
+
+        .kpi-value { font-size: 1.5rem; }
+
+        .recent-list { max-width: 100%; }
+
+        /* Caravan stats table – horizontal scroll */
+        .table-wrapper {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+    }
+
+    @@media (max-width: 480px) {
+        .kpi-grid { grid-template-columns: 1fr 1fr; }
+        .recent-item { flex-direction: column; align-items: flex-start; }
+    }
+</style>
+
+@code {
+    private DashboardStats? stats;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var bookings = await DbContext.Bookings
+            .Include(b => b.Caravan)
+            .ToListAsync();
+
+        var caravans = await DbContext.Caravans
+            .ToListAsync();
+
+        var approved = bookings.Where(b => b.Status == BookingStatus.Approved).ToList();
+        var pending  = bookings.Where(b => b.Status == BookingStatus.Pending).ToList();
+
+        var totalRevenue = approved.Sum(b =>
+        {
+            var days = (b.ToDate - b.FromDate).Days + 1;
+            var price = b.Caravan?.PricePerDay ?? 0;
+            return days * price;
+        });
+
+        var perCaravan = caravans.Select(c =>
+        {
+            var cb = bookings.Where(b => b.CaravanId == c.Id).ToList();
+            var days = cb.Where(b => b.Status == BookingStatus.Approved)
+                        .Sum(b => (b.ToDate - b.FromDate).Days + 1);
+            return new CaravanStats
+            {
+                CaravanName = c.Name,
+                Total    = cb.Count,
+                Approved = cb.Count(b => b.Status == BookingStatus.Approved),
+                Cancelled = cb.Count(b => b.Status == BookingStatus.Cancelled),
+                Revenue  = days * c.PricePerDay
+            };
+        }).ToList();
+
+        stats = new DashboardStats
+        {
+            TotalBookings    = bookings.Count,
+            ApprovedBookings = approved.Count,
+            PendingBookings  = pending.Count,
+            TotalRevenue     = totalRevenue,
+            PerCaravan       = perCaravan,
+            RecentBookings   = bookings.OrderByDescending(b => b.CreatedAt).Take(5).ToList()
+        };
+    }
+
+    private string GetStatusBadge(BookingStatus s) => s switch
+    {
+        BookingStatus.Pending   => "badge-pending",
+        BookingStatus.Approved  => "badge-approved",
+        BookingStatus.Cancelled => "badge-cancelled",
+        _ => ""
+    };
+
+    private string GetStatusLabel(BookingStatus s) => s switch
+    {
+        BookingStatus.Pending   => "Függőben",
+        BookingStatus.Approved  => "Jóváhagyva",
+        BookingStatus.Cancelled => "Lemondva",
+        _ => s.ToString()
+    };
+
+    private class DashboardStats
+    {
+        public int TotalBookings { get; set; }
+        public int ApprovedBookings { get; set; }
+        public int PendingBookings { get; set; }
+        public decimal TotalRevenue { get; set; }
+        public List<CaravanStats> PerCaravan { get; set; } = new();
+        public List<BookingEntity> RecentBookings { get; set; } = new();
+    }
+
+    private class CaravanStats
+    {
+        public string CaravanName { get; set; } = "";
+        public int Total { get; set; }
+        public int Approved { get; set; }
+        public int Cancelled { get; set; }
+        public decimal Revenue { get; set; }
+    }
+}

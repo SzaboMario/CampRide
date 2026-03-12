@@ -1,0 +1,195 @@
+@page "/admin/bookings"
+@rendermode InteractiveServer
+@using CampRide.Data.Entities
+@using CampRide.Services
+@inject BookingService BookingService
+@inject IJSRuntime JS
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Admin")]
+
+<h2 class="mb-4">Foglalások kezelése</h2>
+
+<div class="d-flex align-items-center gap-3 mb-4 flex-wrap">
+    <label class="fw-semibold mb-0">Szűrés státusz szerint:</label>
+    <select class="form-select w-auto" @bind="statusFilter">
+        <option value="">Összes</option>
+        <option value="Pending">Függőben</option>
+        <option value="Approved">Jóváhagyva</option>
+        <option value="Cancelled">Lemondva</option>
+    </select>
+    <button class="btn btn-outline-success ms-auto" @onclick="ExportCsv">
+        📥 CSV letöltés
+    </button>
+</div>
+
+@if (bookings == null)
+{
+    <p><em>Betöltés...</em></p>
+}
+else if (!FilteredBookings.Any())
+{
+    <div class="alert alert-info">Nincs megjeleníthető foglalás.</div>
+}
+else
+{
+    <div class="table-responsive">
+        <table class="table table-hover align-middle">
+            <thead class="table-dark">
+                <tr>
+                    <th>#</th>
+                    <th>Jármű</th>
+                    <th>Ügyfél</th>
+                    <th>Email</th>
+                    <th>Telefon</th>
+                    <th>Kezdés</th>
+                    <th>Vége</th>
+                    <th>Napok</th>
+                    <th>Megjegyzés</th>
+                    <th>Státusz</th>
+                    <th>Műveletek</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var b in FilteredBookings)
+                {
+                    <tr>
+                        <td>@b.Id</td>
+                        <td>@b.Caravan?.Name</td>
+                        <td>@b.CustomerName</td>
+                        <td><a href="mailto:@b.Email">@b.Email</a></td>
+                        <td>@b.Phone</td>
+                        <td>@b.FromDate.ToString("yyyy.MM.dd")</td>
+                        <td>@b.ToDate.ToString("yyyy.MM.dd")</td>
+                        <td>@((b.ToDate - b.FromDate).Days + 1)</td>
+                        <td>
+                            @if (!string.IsNullOrWhiteSpace(b.Notes))
+                            {
+                                <span title="@b.Notes" style="cursor:help;">📝</span>
+                            }
+                        </td>
+                        <td>
+                            <span class="badge @GetStatusBadge(b.Status)">@GetStatusLabel(b.Status)</span>
+                        </td>
+                        <td>
+                            <div class="d-flex gap-1">
+                                @if (b.Status == BookingStatus.Pending)
+                                {
+                                    <button class="btn btn-sm btn-success" @onclick="() => Approve(b.Id)" title="Jóváhagyás">
+                                        ✔ Jóváhagy
+                                    </button>
+                                    <button class="btn btn-sm btn-danger" @onclick="() => Cancel(b.Id)" title="Lemondás">
+                                        ✖ Lemond
+                                    </button>
+                                }
+                                else if (b.Status == BookingStatus.Approved)
+                                {
+                                    <button class="btn btn-sm btn-outline-danger" @onclick="() => Cancel(b.Id)" title="Lemondás">
+                                        ✖ Lemond
+                                    </button>
+                                }
+                                else
+                                {
+                                    <span class="text-muted small">–</span>
+                                }
+                            </div>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@if (!string.IsNullOrEmpty(message))
+{
+    <div class="alert @(messageSuccess ? "alert-success" : "alert-danger") mt-3 alert-dismissible" role="alert">
+        @message
+        <button type="button" class="btn-close" @onclick="() => message = null"></button>
+    </div>
+}
+
+@code {
+    private List<BookingEntity>? bookings;
+    private string statusFilter = "";
+    private string? message;
+    private bool messageSuccess = true;
+
+    private IEnumerable<BookingEntity> FilteredBookings =>
+        bookings!.Where(b =>
+            string.IsNullOrEmpty(statusFilter) ||
+            b.Status.ToString() == statusFilter
+        ).OrderByDescending(b => b.Id);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        bookings = await BookingService.GetAllBookingsAsync();
+    }
+
+    private async Task Approve(int id)
+    {
+        await BookingService.ApproveAsync(id);
+        await LoadAsync();
+        ShowMessage("Foglalás jóváhagyva.", true);
+    }
+
+    private async Task Cancel(int id)
+    {
+        await BookingService.CancelAsync(id);
+        await LoadAsync();
+        ShowMessage("Foglalás lemondva.", true);
+    }
+
+    private void ShowMessage(string msg, bool success)
+    {
+        message = msg;
+        messageSuccess = success;
+    }
+
+    private async Task ExportCsv()
+    {
+        try
+        {
+            var rows = FilteredBookings.ToList();
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine("ID;Jármű;Ügyfél;Email;Telefon;Kezdés;Vége;Napok;Státusz;Megjegyzés");
+            foreach (var b in rows)
+            {
+                var days = (b.ToDate - b.FromDate).Days + 1;
+                sb.AppendLine($"{b.Id};{Escape(b.Caravan?.Name)};{Escape(b.CustomerName)};{Escape(b.Email)};{Escape(b.Phone)};{b.FromDate:yyyy.MM.dd};{b.ToDate:yyyy.MM.dd};{days};{GetStatusLabel(b.Status)};{Escape(b.Notes)}");
+            }
+            await JS.InvokeVoidAsync("downloadCsv", $"foglalasok_{DateTime.Now:yyyyMMdd}.csv", sb.ToString());
+        }
+        catch (Exception ex)
+        {
+            ShowMessage($"CSV letöltés sikertelen: {ex.Message}", false);
+        }
+    }
+
+    private static string Escape(string? s)
+    {
+        if (string.IsNullOrEmpty(s)) return "";
+        if (s.Contains(';') || s.Contains('"') || s.Contains('\n'))
+            return $"\"{s.Replace("\"", "\"\"")}\"";
+        return s;
+    }
+
+    private string GetStatusBadge(BookingStatus s) => s switch
+    {
+        BookingStatus.Pending   => "bg-warning text-dark",
+        BookingStatus.Approved  => "bg-success",
+        BookingStatus.Cancelled => "bg-secondary",
+        _ => "bg-light text-dark"
+    };
+
+    private string GetStatusLabel(BookingStatus s) => s switch
+    {
+        BookingStatus.Pending   => "Függőben",
+        BookingStatus.Approved  => "Jóváhagyva",
+        BookingStatus.Cancelled => "Lemondva",
+        _ => s.ToString()
+    };
+}

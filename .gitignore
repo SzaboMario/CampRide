@@ -1,7 +1,22 @@
-﻿################################################################################
-# This .gitignore file was automatically created by Microsoft(R) Visual Studio.
-################################################################################
+# Build outputs
+bin/
+obj/
 
-/CampRide/obj
-/CampRide/.vs
-/CampRide/bin/Debug/net9.0
+# .NET user-specific files
+*.user
+*.suo
+.vs/
+
+# SQLite WAL temp fájlok (a .db maga verziókezelve van)
+*.db-shm
+*.db-wal
+
+# User secrets
+appsettings.Development.json
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Claude dev config
+.claude/

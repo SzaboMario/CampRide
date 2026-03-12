@@ -1,0 +1,637 @@
+@using CampRide.Data.Entities
+@using CampRide.Services
+@using Microsoft.AspNetCore.Components.Authorization
+@inject BookingService BookingService
+@inject AuthenticationStateProvider AuthStateProvider
+
+@* ========== LÉPÉS 1: Naptár ========== *@
+@if (step == Step.Calendar)
+{
+    <div class="bm-overlay" @onclick="Close">
+        <div class="bm-box" @onclick:stopPropagation="true">
+            <button class="bm-close" @onclick="Close">&times;</button>
+            <h4 class="bm-title">Dátum kiválasztása</h4>
+            <p class="bm-subtitle">@CaravanName</p>
+
+            <div class="bm-month-nav">
+                <button class="bm-nav-btn" @onclick="PrevMonth" disabled="@(currentMonth <= todayMonth)">&#8249;</button>
+                <span>@currentMonth.ToString("yyyy. MMMM", huCulture)</span>
+                <button class="bm-nav-btn" @onclick="NextMonth">&#8250;</button>
+            </div>
+
+            <div class="bm-grid">
+                @foreach (var label in dayLabels)
+                {
+                    <div class="bm-day-label">@label</div>
+                }
+                @foreach (var day in GetCalendarDays())
+                {
+                    if (day == null)
+                    {
+                        <div></div>
+                    }
+                    else
+                    {
+                        var d = day.Value;
+                        var status = GetDayStatus(d);
+                        var inRange = IsInSelectedRange(d);
+                        var isStart = fromDate.HasValue && d.Date == fromDate.Value.Date;
+                        var isEnd = toDate.HasValue && d.Date == toDate.Value.Date;
+                        var isToday = d.Date == DateTime.Today;
+                        var css = $"bm-day {status}{(inRange ? " bm-in-range" : "")}{(isStart || isEnd ? " bm-range-end-day" : "")}{(isToday ? " bm-today" : "")}";
+
+                        <div class="@css" @onclick="() => SelectDay(d)">@d.Day</div>
+                    }
+                }
+            </div>
+
+            <div class="bm-legend">
+                <span class="bm-leg"><span class="bm-dot bm-dot-avail"></span>Szabad</span>
+                <span class="bm-leg"><span class="bm-dot bm-dot-booked"></span>Foglalt</span>
+                <span class="bm-leg"><span class="bm-dot bm-dot-past"></span>Nem elérhető</span>
+                <span class="bm-leg"><span class="bm-dot bm-dot-sel"></span>Kiválasztott</span>
+            </div>
+
+            @if (fromDate.HasValue)
+            {
+                <div class="bm-range-summary">
+                    @if (toDate.HasValue)
+                    {
+                        var days = (toDate.Value - fromDate.Value).Days + 1;
+                        <strong>@fromDate.Value.ToString("yyyy. MM. dd.")</strong>
+                        <span> – </span>
+                        <strong>@toDate.Value.ToString("yyyy. MM. dd.")</strong>
+                        <span class="bm-days-count">(@days nap)</span>
+                        @if (PricePerDay > 0)
+                        {
+                            <div class="bm-total-price">Becsült összeg: <strong>@((PricePerDay * days).ToString("N0")) Ft</strong></div>
+                        }
+                    }
+                    else
+                    {
+                        <span>Kezdő nap: <strong>@fromDate.Value.ToString("yyyy. MM. dd.")</strong> — válassz végdátumot</span>
+                    }
+                </div>
+            }
+
+            <div class="bm-footer">
+                <button class="btn btn-secondary btn-sm" @onclick="Close">Mégse</button>
+                <button class="btn btn-success btn-sm"
+                        disabled="@(!fromDate.HasValue || !toDate.HasValue)"
+                        @onclick="GoToForm">
+                    Tovább →
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@* ========== LÉPÉS 2: Adatok ========== *@
+@if (step == Step.Form)
+{
+    <div class="bm-overlay" @onclick="Close">
+        <div class="bm-box" @onclick:stopPropagation="true">
+            <button class="bm-close" @onclick="Close">&times;</button>
+            <h4 class="bm-title">Kapcsolati adatok</h4>
+
+            <div class="bm-booking-summary">
+                <div><strong>@CaravanName</strong></div>
+                <div>@fromDate!.Value.ToString("yyyy. MM. dd.") – @toDate!.Value.ToString("yyyy. MM. dd.")</div>
+                @{
+                    var summaryDays = (toDate!.Value - fromDate.Value).Days + 1;
+                }
+                <div class="bm-days-count">@summaryDays nap</div>
+                @if (PricePerDay > 0)
+                {
+                    <div class="bm-total-price mt-1">Becsült összeg: <strong>@((PricePerDay * summaryDays).ToString("N0")) Ft</strong></div>
+                }
+            </div>
+
+            @if (!string.IsNullOrEmpty(errorMessage))
+            {
+                <div class="alert alert-danger mt-2 py-2">@errorMessage</div>
+            }
+
+            <div class="mb-3 mt-3">
+                <label class="form-label">Teljes név *</label>
+                <input class="form-control" @bind="customerName" placeholder="Kovács János" />
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Email cím *</label>
+                <input class="form-control" type="email" @bind="email"
+                       placeholder="pelda@email.hu"
+                       readonly="@isAuthenticated" />
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Telefonszám *</label>
+                <input class="form-control" @bind="phone" placeholder="+36 30 123 4567" />
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Megjegyzés</label>
+                <textarea class="form-control" @bind="notes" rows="2"
+                          placeholder="Egyéb kérés, megjegyzés..."></textarea>
+            </div>
+
+            <div class="bm-footer">
+                <button class="btn btn-secondary btn-sm"
+                        @onclick="() => step = Step.Calendar">← Vissza</button>
+                <button class="btn btn-success btn-sm"
+                        disabled="@isSubmitting"
+                        @onclick="SubmitBooking">
+                    @(isSubmitting ? "Küldés..." : "Foglalás elküldése")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@* ========== LÉPÉS 3: Siker ========== *@
+@if (step == Step.Success)
+{
+    <div class="bm-overlay">
+        <div class="bm-box bm-success" @onclick:stopPropagation="true">
+            <div class="bm-success-icon">✓</div>
+            <h4 class="bm-title">Foglalás elküldve!</h4>
+            <p>Köszönjük, <strong>@customerName</strong>!</p>
+            <p class="mb-1"><strong>@CaravanName</strong></p>
+            <p class="text-muted">
+                @fromDate!.Value.ToString("yyyy. MM. dd.") – @toDate!.Value.ToString("yyyy. MM. dd.")
+                &nbsp;(@((toDate.Value - fromDate.Value).Days + 1) nap)
+            </p>
+            <p class="small text-muted">A foglalás elbírálásáról értesítünk: <strong>@email</strong></p>
+
+            @if (!isAuthenticated)
+            {
+                <div class="bm-register-offer">
+                    <p class="mb-2">Regisztrálj ezzel az e-mail-lel, hogy legközelebb egyszerűbb legyen a foglalás!</p>
+                    <a href="/account/register?email=@Uri.EscapeDataString(email)"
+                       class="btn btn-outline-primary btn-sm me-2">
+                        Regisztrálok
+                    </a>
+                    <button class="btn btn-link btn-sm" @onclick="Close">Nem, köszönöm</button>
+                </div>
+            }
+            else
+            {
+                <button class="btn btn-primary mt-2" @onclick="Close">Bezárás</button>
+            }
+        </div>
+    </div>
+}
+
+<style>
+    .bm-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,0.6);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 5000;
+        padding: 1rem;
+    }
+
+    .bm-box {
+        background: white;
+        border-radius: 16px;
+        padding: 1.75rem;
+        width: 100%;
+        max-width: 480px;
+        max-height: 92vh;
+        overflow-y: auto;
+        position: relative;
+        box-shadow: 0 12px 48px rgba(0,0,0,0.3);
+    }
+
+    .bm-close {
+        position: absolute;
+        top: 1rem;
+        right: 1rem;
+        background: #f0f0f0;
+        border: none;
+        border-radius: 50%;
+        width: 2rem;
+        height: 2rem;
+        font-size: 1.2rem;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        line-height: 1;
+    }
+
+    .bm-close:hover { background: #ddd; }
+
+    .bm-title {
+        font-size: 1.2rem;
+        font-weight: 700;
+        color: #3a0647;
+        margin-bottom: 0.2rem;
+        padding-right: 2rem;
+    }
+
+    .bm-subtitle {
+        color: #666;
+        margin-bottom: 1rem;
+        font-size: 0.9rem;
+    }
+
+    /* Month nav */
+    .bm-month-nav {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 0.75rem;
+        font-weight: 600;
+        font-size: 0.95rem;
+    }
+
+    .bm-nav-btn {
+        background: none;
+        border: 1px solid #ddd;
+        border-radius: 6px;
+        width: 2rem;
+        height: 2rem;
+        font-size: 1.4rem;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        line-height: 1;
+        padding: 0;
+        color: #333;
+    }
+
+    .bm-nav-btn:hover:not(:disabled) { background: #f0f0f0; }
+    .bm-nav-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+    /* Calendar grid */
+    .bm-grid {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        gap: 3px;
+        margin-bottom: 0.75rem;
+    }
+
+    .bm-day-label {
+        text-align: center;
+        font-size: 0.72rem;
+        font-weight: 700;
+        color: #888;
+        padding: 4px 0;
+    }
+
+    .bm-day {
+        text-align: center;
+        padding: 7px 3px;
+        border-radius: 6px;
+        font-size: 0.85rem;
+        cursor: pointer;
+        transition: opacity 0.1s;
+        user-select: none;
+    }
+
+    /* Available – zöld */
+    .bm-day.available {
+        background: #d4edda;
+        color: #155724;
+    }
+    .bm-day.available:hover { background: #b8dfc4; }
+
+    /* Booked – rózsaszín */
+    .bm-day.booked {
+        background: #f8d7da;
+        color: #721c24;
+        cursor: not-allowed;
+    }
+
+    /* Past – szürke */
+    .bm-day.past {
+        background: #e9ecef;
+        color: #adb5bd;
+        cursor: not-allowed;
+    }
+
+    /* Selected range – kék */
+    .bm-day.bm-in-range {
+        background: #cfe2ff;
+        color: #084298;
+    }
+    .bm-day.bm-range-end-day {
+        background: #0d6efd;
+        color: white;
+        font-weight: 700;
+    }
+
+    /* Today – kis keret */
+    .bm-day.bm-today:not(.past) {
+        outline: 2px solid #0d6efd;
+        outline-offset: -2px;
+    }
+
+    /* Legend */
+    .bm-legend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.6rem 1rem;
+        margin-bottom: 0.75rem;
+        font-size: 0.8rem;
+        color: #555;
+    }
+
+    .bm-leg { display: flex; align-items: center; gap: 5px; }
+
+    .bm-dot {
+        width: 12px;
+        height: 12px;
+        border-radius: 3px;
+        display: inline-block;
+        flex-shrink: 0;
+    }
+
+    .bm-dot-avail  { background: #d4edda; border: 1px solid #b8dfc4; }
+    .bm-dot-booked { background: #f8d7da; border: 1px solid #f5c2c7; }
+    .bm-dot-past   { background: #e9ecef; border: 1px solid #ced4da; }
+    .bm-dot-sel    { background: #0d6efd; }
+
+    /* Range summary */
+    .bm-range-summary {
+        background: #f8f9fa;
+        border-radius: 8px;
+        padding: 0.6rem 0.9rem;
+        font-size: 0.9rem;
+        margin-bottom: 0.75rem;
+        text-align: center;
+    }
+
+    .bm-days-count {
+        color: #0d6efd;
+        font-weight: 600;
+        margin-left: 4px;
+    }
+
+    .bm-total-price {
+        color: #3a0647;
+        font-size: 0.95rem;
+        margin-top: 0.3rem;
+    }
+
+    /* Booking summary (step 2) */
+    .bm-booking-summary {
+        background: #f8f9fa;
+        border-radius: 8px;
+        padding: 0.75rem 1rem;
+        margin-bottom: 1rem;
+        font-size: 0.9rem;
+    }
+
+    /* Footer actions */
+    .bm-footer {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-top: 1rem;
+        padding-top: 0.75rem;
+        border-top: 1px solid #f0f0f0;
+    }
+
+    /* Success */
+    .bm-success {
+        text-align: center;
+    }
+
+    .bm-success-icon {
+        width: 3.5rem;
+        height: 3.5rem;
+        background: #198754;
+        color: white;
+        border-radius: 50%;
+        font-size: 1.8rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 auto 1rem;
+    }
+
+    .bm-register-offer {
+        background: #e8f4fd;
+        border-radius: 10px;
+        padding: 1rem;
+        margin-top: 1rem;
+        font-size: 0.9rem;
+    }
+
+    @@media (max-width: 768px) {
+        .bm-box {
+            padding: 1.25rem 0.85rem;
+            border-radius: 10px;
+            max-height: 95vh;
+        }
+
+        .bm-grid {
+            gap: 3px;
+        }
+
+        .bm-day {
+            font-size: 0.72rem;
+            padding: 4px 2px;
+            min-height: 32px;
+        }
+
+        .bm-footer {
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .bm-footer .btn {
+            width: 100%;
+        }
+
+        .bm-legend {
+            gap: 8px;
+        }
+    }
+</style>
+
+@code {
+    [Parameter] public int CaravanId { get; set; }
+    [Parameter] public string CaravanName { get; set; } = "";
+    [Parameter] public decimal PricePerDay { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private enum Step { Calendar, Form, Success }
+    private Step step = Step.Calendar;
+
+    private static readonly System.Globalization.CultureInfo huCulture =
+        new System.Globalization.CultureInfo("hu-HU");
+    private static readonly string[] dayLabels = ["H", "K", "Sze", "Cs", "P", "Szo", "V"];
+
+    private DateTime todayMonth = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
+    private DateTime currentMonth;
+    private List<(DateTime From, DateTime To)> bookedRanges = new();
+
+    private DateTime? fromDate;
+    private DateTime? toDate;
+
+    private string customerName = "";
+    private string email = "";
+    private string phone = "";
+    private string notes = "";
+
+    private string? errorMessage;
+    private bool isSubmitting = false;
+    private bool isAuthenticated = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        currentMonth = todayMonth;
+        bookedRanges = await BookingService.GetBookedRangesAsync(CaravanId);
+
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+        if (user.Identity?.IsAuthenticated == true)
+        {
+            isAuthenticated = true;
+            email = user.Identity.Name ?? "";
+        }
+    }
+
+    // --- Calendar helpers ---
+
+    private IEnumerable<DateTime?> GetCalendarDays()
+    {
+        var firstDay = currentMonth;
+        var lastDay = new DateTime(currentMonth.Year, currentMonth.Month,
+            DateTime.DaysInMonth(currentMonth.Year, currentMonth.Month));
+
+        int leadingBlanks = ((int)firstDay.DayOfWeek + 6) % 7; // 0=Mon
+        var days = new List<DateTime?>();
+        for (int i = 0; i < leadingBlanks; i++) days.Add(null);
+        for (var d = firstDay; d <= lastDay; d = d.AddDays(1)) days.Add(d);
+        return days;
+    }
+
+    private string GetDayStatus(DateTime d)
+    {
+        if (d.Date < DateTime.Today) return "past";
+        if (IsBooked(d)) return "booked";
+        return "available";
+    }
+
+    private bool IsBooked(DateTime d)
+        => bookedRanges.Any(r => d.Date >= r.From.Date && d.Date <= r.To.Date);
+
+    private bool IsInSelectedRange(DateTime d)
+    {
+        if (!fromDate.HasValue) return false;
+        if (!toDate.HasValue) return d.Date == fromDate.Value.Date;
+        return d.Date >= fromDate.Value.Date && d.Date <= toDate.Value.Date;
+    }
+
+    private void SelectDay(DateTime d)
+    {
+        if (GetDayStatus(d) is "past" or "booked") return;
+
+        if (!fromDate.HasValue || toDate.HasValue)
+        {
+            // Kezdj új kiválasztást
+            fromDate = d;
+            toDate = null;
+            return;
+        }
+
+        // fromDate van, toDate nincs – second click
+        if (d.Date < fromDate.Value.Date)
+        {
+            fromDate = d;
+            return;
+        }
+
+        if (d.Date == fromDate.Value.Date)
+        {
+            toDate = d; // 1 napos bérlés
+            return;
+        }
+
+        // Ellenőrzés: van-e foglalt nap a tartományban?
+        bool blocked = false;
+        for (var check = fromDate.Value.AddDays(1); check <= d; check = check.AddDays(1))
+        {
+            if (IsBooked(check)) { blocked = true; break; }
+        }
+
+        if (blocked)
+        {
+            fromDate = d;
+            toDate = null;
+        }
+        else
+        {
+            toDate = d;
+        }
+    }
+
+    private void PrevMonth()
+    {
+        if (currentMonth > todayMonth)
+            currentMonth = currentMonth.AddMonths(-1);
+    }
+
+    private void NextMonth() => currentMonth = currentMonth.AddMonths(1);
+
+    private void GoToForm()
+    {
+        if (fromDate.HasValue && toDate.HasValue)
+            step = Step.Form;
+    }
+
+    private async Task SubmitBooking()
+    {
+        errorMessage = null;
+
+        if (string.IsNullOrWhiteSpace(customerName))
+        { errorMessage = "A név megadása kötelező."; return; }
+        if (string.IsNullOrWhiteSpace(email))
+        { errorMessage = "Az email cím megadása kötelező."; return; }
+        if (string.IsNullOrWhiteSpace(phone))
+        { errorMessage = "A telefonszám megadása kötelező."; return; }
+
+        isSubmitting = true;
+
+        try
+        {
+            var booking = new BookingEntity
+            {
+                CaravanId = CaravanId,
+                FromDate = fromDate!.Value.Date,
+                ToDate = toDate!.Value.Date,
+                CustomerName = customerName.Trim(),
+                Email = email.Trim(),
+                Phone = phone.Trim(),
+                Notes = notes.Trim(),
+                Status = BookingStatus.Pending
+            };
+
+            if (isAuthenticated)
+            {
+                var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+                var userId = authState.User
+                    .FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+                booking.UserId = userId;
+            }
+
+            await BookingService.CreateBookingAsync(booking);
+            step = Step.Success;
+        }
+        catch (Exception ex)
+        {
+            errorMessage = ex.Message;
+        }
+        finally
+        {
+            isSubmitting = false;
+        }
+    }
+
+    private void Close() => OnClose.InvokeAsync();
+}
