@@ -2,8 +2,6 @@
 @rendermode InteractiveServer
 @using CampRide.Data.Entities
 @using CampRide.Services
-@inject BookingService BookingSvc
-@inject IJSRuntime JsInterop
 @attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Admin")]
 
 <h2 class="mb-4">Foglalások kezelése</h2>
@@ -101,13 +99,17 @@ else
 
 @if (!string.IsNullOrEmpty(message))
 {
-    <div class="alert @(messageSuccess ? "alert-success" : "alert-danger") mt-3 alert-dismissible" role="alert">
+    var alertClass = messageSuccess ? "alert-success" : "alert-danger";
+    <div class="alert @alertClass mt-3 alert-dismissible" role="alert">
         @message
         <button type="button" class="btn-close" @onclick="() => message = null"></button>
     </div>
 }
 
 @code {
+    [Inject] private BookingService BookingSvc { get; set; } = default!;
+    [Inject] private IJSRuntime JsInterop { get; set; } = default!;
+
     private List<BookingEntity>? bookings;
     private string statusFilter = "";
     private string? message;
@@ -173,7 +175,10 @@ else
     {
         if (string.IsNullOrEmpty(s)) return "";
         if (s.Contains(';') || s.Contains('"') || s.Contains('\n'))
-            return $"\"{s.Replace("\"", "\"\"")}\"";
+        {
+            var dq = "\"";
+            return dq + s.Replace(dq, dq + dq) + dq;
+        }
         return s;
     }
 
